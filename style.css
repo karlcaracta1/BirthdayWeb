@@ -1,544 +1,185 @@
 /* ============================================================
    HAPPY BIRTHDAY — INTERACTIVE 3D BOOK
-   Stylesheet organised by section. Search the ALL-CAPS headers
-   to jump around.
+   script.js — organised into small, single-purpose functions.
    ============================================================ */
 
-/* ---------- 1. DESIGN TOKENS ---------- */
-:root {
-  /* Palette: light blue / white tulip theme */
-  --sky-pale:      #eef6fb;
-  --sky-mist:      #dcedf7;
-  --blue-soft:     #b8d9ec;
-  --blue-mid:      #8fbfdd;
-  --blue-deep:     #5f97b8;
-  --white:         #ffffff;
-  --cream:         #fbf8f2;
-  --grey-light:    #f2f3f5;
-  --ink:           #38495a;
-  --ink-soft:      #6f8394;
-  --gold:          #cbb68c;
-  --gold-soft:     #e3d6b8;
+(function () {
+  'use strict';
 
-  /* Type */
-  --font-display: 'Italiana', serif;
-  --font-serif:   'Cormorant Garamond', serif;
-  --font-sans:    'Jost', sans-serif;
+  /* ---------- DOM references ---------- */
+  const book          = document.getElementById('book');
+  const hint          = document.getElementById('hint');
+  const petalLayer    = document.getElementById('petalLayer');
+  const bokehLayer    = document.getElementById('bokehLayer');
+  const sparkleLeft   = document.getElementById('sparkleFieldLeft');
+  const sparkleRight  = document.getElementById('sparkleFieldRight');
+  const frontCover    = document.getElementById('frontCover');
+  const messageLines  = document.querySelectorAll('.message-line');
 
-  /* Book dimensions (scaled responsively, see §10) */
-  --book-w: 340px;
-  --book-h: 470px;
+  /* Guards against the open animation firing more than once. */
+  let isAnimating = false;
+  let hasOpened = false;
 
-  /* Timing */
-  --ease-book: cubic-bezier(0.65, 0.05, 0.36, 1);
-  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
-}
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ---------- 2. RESET ---------- */
-* { margin: 0; padding: 0; box-sizing: border-box; }
+  /* ==========================================================
+     1. AMBIENT BACKGROUND — floating petals
+     ========================================================== */
+  function createPetal() {
+    const petal = document.createElement('div');
+    petal.className = 'petal';
 
-html, body {
-  height: 100%;
-  overflow-x: hidden;
-}
+    const size = 10 + Math.random() * 14;
+    const startLeft = Math.random() * 100;
+    const duration = 12 + Math.random() * 10;
+    const delay = Math.random() * -20; // negative delay staggers initial positions
+    const drift = (Math.random() * 160 - 80).toFixed(0) + 'px';
+    const isBlue = Math.random() > 0.5;
 
-body {
-  font-family: var(--font-sans);
-  color: var(--ink);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  background: var(--sky-pale);
-}
+    petal.style.left = startLeft + 'vw';
+    petal.style.animationDuration = duration + 's';
+    petal.style.animationDelay = delay + 's';
+    petal.style.setProperty('--drift', drift);
 
-button { font-family: inherit; }
+    // simple petal silhouette drawn with SVG, tinted per-instance
+    petal.innerHTML =
+      '<svg width="' + size + '" height="' + size * 1.2 + '" viewBox="0 0 20 24">' +
+      '<path d="M10 0 C18 4 18 16 10 24 C2 16 2 4 10 0 Z" fill="' +
+      (isBlue ? '#BEDDEF' : '#FFFFFF') + '" opacity="0.9"/></svg>';
 
-/* ---------- 3. DREAMY BACKGROUND ---------- */
-.background {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.bg-gradient {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 20% 15%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 45%),
-    radial-gradient(ellipse at 85% 80%, rgba(191,220,238,0.55) 0%, rgba(191,220,238,0) 50%),
-    linear-gradient(160deg, var(--sky-pale) 0%, var(--sky-mist) 45%, var(--grey-light) 100%);
-}
-
-/* large ambient glows that drift very slowly */
-.bg-glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.5;
-  will-change: transform;
-}
-.bg-glow--one {
-  width: 40vmax; height: 40vmax;
-  left: -10vmax; top: -10vmax;
-  background: radial-gradient(circle, var(--blue-soft), transparent 70%);
-  animation: drift-one 26s ease-in-out infinite;
-}
-.bg-glow--two {
-  width: 35vmax; height: 35vmax;
-  right: -8vmax; bottom: -8vmax;
-  background: radial-gradient(circle, var(--sky-mist), transparent 70%);
-  animation: drift-two 30s ease-in-out infinite;
-}
-@keyframes drift-one {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(4vmax, 5vmax) scale(1.1); }
-}
-@keyframes drift-two {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(-3vmax, -4vmax) scale(1.08); }
-}
-
-/* petals & bokeh containers — populated by JS */
-.petal-layer, .bokeh-layer { position: absolute; inset: 0; }
-
-.petal {
-  position: absolute;
-  top: -5vh;
-  will-change: transform, opacity;
-  opacity: 0.85;
-  animation-name: petal-fall;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-.petal svg { display: block; }
-
-@keyframes petal-fall {
-  0%   { transform: translate(0, 0) rotate(0deg); }
-  100% { transform: translate(var(--drift, 40px), 115vh) rotate(360deg); }
-}
-
-.bokeh {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.9), rgba(184,217,236,0.15) 60%, transparent 70%);
-  filter: blur(1px);
-  will-change: transform, opacity;
-  animation-name: bokeh-float;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-}
-@keyframes bokeh-float {
-  0%, 100% { transform: translateY(0) scale(1); opacity: var(--bokeh-op, 0.5); }
-  50%      { transform: translateY(-30px) scale(1.15); opacity: calc(var(--bokeh-op, 0.5) * 1.4); }
-}
-
-/* ---------- 4. STAGE / LAYOUT ---------- */
-.stage {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(16px, 3vh, 32px);
-  padding: 24px;
-  width: 100%;
-}
-
-.hint {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: clamp(0.85rem, 2vw, 1rem);
-  color: var(--ink-soft);
-  letter-spacing: 0.04em;
-  opacity: 0.85;
-  transition: opacity 0.6s var(--ease-soft);
-}
-.hint.is-hidden { opacity: 0; }
-
-/* ---------- 5. BOOK SCENE (3D STAGE) ---------- */
-.book-scene {
-  perspective: 1800px;
-  perspective-origin: 50% 40%;
-}
-
-.book {
-  position: relative;
-  width: var(--book-w);
-  height: var(--book-h);
-  transform-style: preserve-3d;
-  cursor: pointer;
-  transition: transform 0.5s var(--ease-soft);
-}
-
-.book:hover:not(.is-open) { transform: translateY(-4px) scale(1.015); }
-.book:focus-visible { outline: 3px solid var(--blue-mid); outline-offset: 8px; border-radius: 10px; }
-
-/* soft glow behind the whole book; intensifies once opened */
-.book-glow {
-  position: absolute;
-  inset: -12%;
-  border-radius: 24px;
-  background: radial-gradient(ellipse at center, rgba(180,216,238,0.55), rgba(180,216,238,0) 70%);
-  opacity: 0.55;
-  filter: blur(24px);
-  transition: opacity 1.2s ease, filter 1.2s ease;
-  z-index: 0;
-  pointer-events: none;
-}
-.book.is-open .book-glow { opacity: 0.9; filter: blur(34px); }
-
-/* ---------- 6. BACK COVER + PAGE EDGES (depth) ---------- */
-.back-cover {
-  position: absolute;
-  inset: 0;
-  border-radius: 6px 10px 10px 6px;
-  background: linear-gradient(135deg, #cfe4f0, #a9cbdf);
-  box-shadow: 0 30px 60px -20px rgba(63, 97, 122, 0.45);
-  transform: translateZ(-14px);
-}
-
-.page-edges {
-  position: absolute;
-  top: 3%;
-  bottom: 3%;
-  right: 1px;
-  width: 14px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  transform: translateZ(-6px) rotateY(2deg);
-}
-.page-edges span {
-  display: block;
-  height: 1px;
-  flex: 1;
-  margin: 0 1px;
-  background: linear-gradient(90deg, #fdfcf8, #eef1e6);
-  border-bottom: 1px solid rgba(0,0,0,0.04);
-}
-
-/* ---------- 7. INSIDE PAGES ---------- */
-.inside {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  border-radius: 6px 10px 10px 6px;
-  overflow: hidden;
-  transform: translateZ(-8px);
-  box-shadow: inset 0 0 40px rgba(150, 170, 185, 0.25);
-}
-
-.page {
-  position: relative;
-  flex: 1 1 50%;
-  background:
-    radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.6), transparent 60%),
-    linear-gradient(180deg, var(--cream) 0%, #f6f2ea 100%);
-  overflow: hidden;
-  padding: 9% 8%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.page-left { border-right: 1px solid rgba(0,0,0,0.06); }
-
-/* subtle paper fibre texture, layered via repeating gradients (no images needed) */
-.page-texture {
-  position: absolute;
-  inset: 0;
-  opacity: 0.5;
-  background-image:
-    repeating-linear-gradient(90deg, rgba(0,0,0,0.015) 0px, transparent 2px, transparent 4px),
-    repeating-linear-gradient(0deg, rgba(0,0,0,0.012) 0px, transparent 2px, transparent 5px);
-  mix-blend-mode: multiply;
-  pointer-events: none;
-}
-
-/* page shadow that sweeps in while the cover opens, for realism */
-.page::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(90,110,125,0.28), transparent 35%);
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-}
-.book.is-open .page::after { opacity: 1; transition-delay: 0.15s; }
-.page-right::after { background: linear-gradient(270deg, rgba(90,110,125,0.12), transparent 45%); }
-
-/* corner flourishes */
-.corner { position: absolute; width: 15%; height: 15%; opacity: 0.55; }
-.corner-tl { top: 6%; left: 6%; }
-.corner-tr { top: 6%; right: 6%; transform: scaleX(-1); }
-.corner-bl { bottom: 6%; left: 6%; transform: scaleY(-1); }
-.corner-br { bottom: 6%; right: 6%; transform: scale(-1); }
-.corner path, .corner circle { stroke: var(--blue-soft); fill: var(--blue-soft); }
-
-/* border tulips along the page edges */
-.border-tulips { position: absolute; inset: 0; pointer-events: none; }
-.border-tulips svg { position: absolute; }
-
-.border-tulips--left::before,
-.border-tulips--left::after,
-.border-tulips--right::before,
-.border-tulips--right::after {
-  content: '';
-  position: absolute;
-  width: 34px; height: 40px;
-  background-repeat: no-repeat;
-  background-size: contain;
-  opacity: 0.8;
-}
-.border-tulips--left::before {
-  top: 4%; left: 3%;
-  background-image: radial-gradient(circle at 50% 40%, var(--blue-soft) 0 30%, transparent 32%);
-}
-.border-tulips--left::after {
-  bottom: 4%; left: 3%;
-  background-image: radial-gradient(circle at 50% 40%, var(--white) 0 30%, transparent 32%);
-}
-.border-tulips--right::before {
-  top: 4%; right: 3%;
-  background-image: radial-gradient(circle at 50% 40%, var(--white) 0 30%, transparent 32%);
-}
-.border-tulips--right::after {
-  bottom: 4%; right: 3%;
-  background-image: radial-gradient(circle at 50% 40%, var(--blue-soft) 0 30%, transparent 32%);
-}
-
-/* ---------- 8. PAGE CONTENT & TYPOGRAPHY ---------- */
-.page-content {
-  position: relative;
-  z-index: 2;
-  text-align: center;
-  width: 100%;
-}
-
-.eyebrow {
-  font-family: var(--font-sans);
-  font-size: 0.7rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.name-line {
-  font-family: var(--font-display);
-  font-size: clamp(1.8rem, 6vw, 2.6rem);
-  color: var(--blue-deep);
-  margin-top: 6px;
-  letter-spacing: 0.02em;
-}
-
-.ribbon-divider, .signature-flourish { margin: 14px auto; width: 70%; }
-.ribbon-svg { width: 100%; height: auto; display: block; }
-
-/* the reveal-able message lines: start hidden, JS/CSS animate them in */
-.message-line {
-  font-family: var(--font-serif);
-  font-size: clamp(1.05rem, 3.4vw, 1.35rem);
-  line-height: 1.5;
-  color: var(--ink);
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.9s var(--ease-soft), transform 0.9s var(--ease-soft);
-}
-.message-line--emphasis {
-  font-family: var(--font-display);
-  font-size: clamp(1.6rem, 5.5vw, 2.1rem);
-  color: var(--blue-deep);
-  margin: 6px 0;
-}
-.message-line--soft {
-  font-size: clamp(0.85rem, 2.6vw, 1rem);
-  color: var(--ink-soft);
-  font-style: italic;
-}
-
-/* revealed state: staggered via inline transition-delay set in JS,
-   but we also provide sensible defaults here */
-.book.is-revealed .message-line { opacity: 1; transform: translateY(0); }
-
-/* ---------- 9. SPARKLES (magical glow during the opening delay) ---------- */
-.sparkle-field {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 3;
-}
-.sparkle {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: radial-gradient(circle, #ffffff 0%, var(--blue-soft) 60%, transparent 75%);
-  border-radius: 50%;
-  opacity: 0;
-  animation: sparkle-pop 1.4s ease-in-out forwards;
-}
-@keyframes sparkle-pop {
-  0%   { opacity: 0; transform: scale(0.3); }
-  35%  { opacity: 1; transform: scale(1.15); }
-  100% { opacity: 0; transform: scale(0.4) translateY(-12px); }
-}
-
-/* ---------- 10. FRONT COVER + COVER ART ---------- */
-.front-cover {
-  position: absolute;
-  inset: 0;
-  transform-origin: left center;
-  transform-style: preserve-3d;
-  transition: transform 1.1s var(--ease-book);
-  border-radius: 6px 10px 10px 6px;
-  z-index: 5;
-}
-
-.book.is-open .front-cover { transform: rotateY(-172deg); }
-
-.cover-texture,
-.cover-frame,
-.cover-spine-shadow,
-.cover-sheen {
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  border-radius: inherit;
-}
-
-/* premium cover surface: layered pastel gradients + faint linen weave */
-.cover-texture {
-  background:
-    linear-gradient(135deg, #eef7fc 0%, #dcedf7 38%, #cfe4f0 100%);
-  box-shadow:
-    0 26px 55px -18px rgba(70, 105, 130, 0.55),
-    0 4px 10px rgba(70, 105, 130, 0.25),
-    inset 0 0 0 1px rgba(255,255,255,0.6);
-}
-.cover-texture::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-image:
-    repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 2px, transparent 2px 5px),
-    repeating-linear-gradient(-45deg, rgba(140,175,197,0.10) 0 2px, transparent 2px 5px);
-  opacity: 0.5;
-  mix-blend-mode: overlay;
-}
-/* embossed border frame, like a foil-stamped hardcover */
-.cover-frame {
-  margin: 14px;
-  border: 1.5px solid rgba(255,255,255,0.8);
-  outline: 1px solid rgba(120,155,180,0.35);
-  outline-offset: -6px;
-  border-radius: 3px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 10% 8%;
-}
-
-.cover-tulips { position: absolute; inset: 0; pointer-events: none; }
-.tulip { position: absolute; width: 15%; filter: drop-shadow(0 4px 6px rgba(70,100,120,0.18)); }
-.stem   { position: absolute; width: 8%; opacity: 0.9; }
-
-.tulip--tl { top: 6%;  left: 8%; }
-.tulip--tr { top: 6%;  right: 8%; transform: scaleX(-1); }
-.stem--l   { top: 16%; left: 12.5%; }
-.stem--r   { top: 16%; right: 12.5%; transform: scaleX(-1); }
-
-.tulip--bl { bottom: 6%; left: 10%;  width: 13%; }
-.tulip--bm { bottom: 4%; left: 43%;  width: 15%; }
-.tulip--br { bottom: 6%; right: 10%; width: 13%; transform: scaleX(-1); }
-
-.cover-title { position: relative; z-index: 2; text-align: center; }
-.cover-title__eyebrow {
-  display: block;
-  font-family: var(--font-sans);
-  font-weight: 300;
-  font-size: clamp(0.6rem, 1.6vw, 0.72rem);
-  letter-spacing: 0.18em;
-  color: var(--blue-deep);
-  text-transform: uppercase;
-  opacity: 0.75;
-}
-.cover-title__main {
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(1.9rem, 7vw, 2.7rem);
-  line-height: 1.15;
-  color: #3f6a86;
-  margin: 10px 0;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.7);
-}
-.cover-title__rule {
-  display: block;
-  width: 56px;
-  height: 1.5px;
-  margin: 6px auto 0;
-  background: linear-gradient(90deg, transparent, var(--blue-mid), transparent);
-}
-
-/* inner spine shading + a soft diagonal sheen for a "premium" feel */
-.cover-spine-shadow {
-  background: linear-gradient(90deg, rgba(60,90,110,0.28), transparent 10%);
-}
-.cover-sheen {
-  background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.35) 48%, transparent 56%);
-  background-size: 220% 220%;
-  background-position: 0% 0%;
-  opacity: 0.8;
-  transition: background-position 1.4s ease;
-  pointer-events: none;
-}
-.book:hover:not(.is-open) .cover-sheen { background-position: 100% 100%; }
-
-/* spine strip along the left edge, for a bound-book silhouette */
-.spine {
-  position: absolute;
-  left: -4px;
-  top: 2%;
-  bottom: 2%;
-  width: 10px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #a9cbdf, #7fa9c4 50%, #a9cbdf);
-  box-shadow: -2px 0 8px rgba(60,90,110,0.3);
-  z-index: 6;
-}
-
-/* ---------- 11. RESPONSIVENESS ---------- */
-@media (max-width: 720px) {
-  :root { --book-w: min(84vw, 320px); --book-h: min(112vw, 440px); }
-  .cover-frame { padding: 8% 6%; }
-}
-
-@media (max-width: 420px) {
-  :root { --book-w: 86vw; --book-h: 118vw; }
-  .page { padding: 8% 7%; }
-  .corner { width: 18%; height: 18%; }
-}
-
-@media (min-width: 1100px) {
-  :root { --book-w: 380px; --book-h: 520px; }
-}
-
-/* touch devices: remove hover-only affordance, rely on tap */
-@media (hover: none) {
-  .book:hover:not(.is-open) { transform: none; }
-  .book:active:not(.is-open) { transform: scale(0.985); }
-}
-
-/* ---------- 12. REDUCED MOTION ---------- */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    petalLayer.appendChild(petal);
   }
-}
+
+  function initPetals(count) {
+    for (let i = 0; i < count; i++) createPetal();
+  }
+
+  /* ---------- 2. AMBIENT BACKGROUND — bokeh lights ---------- */
+  function createBokeh() {
+    const dot = document.createElement('div');
+    dot.className = 'bokeh';
+
+    const size = 20 + Math.random() * 50;
+    dot.style.width = size + 'px';
+    dot.style.height = size + 'px';
+    dot.style.left = Math.random() * 100 + 'vw';
+    dot.style.top = Math.random() * 100 + 'vh';
+    dot.style.animationDuration = (6 + Math.random() * 8) + 's';
+    dot.style.animationDelay = (Math.random() * -10) + 's';
+    dot.style.setProperty('--bokeh-op', (0.2 + Math.random() * 0.4).toFixed(2));
+
+    bokehLayer.appendChild(dot);
+  }
+
+  function initBokeh(count) {
+    for (let i = 0; i < count; i++) createBokeh();
+  }
+
+  /* ==========================================================
+     3. SPARKLE BURST — the "magical glow" during the reveal delay
+     ========================================================== */
+  function spawnSparkle(container) {
+    const sparkle = document.createElement('div');
+    sparkle.className = 'sparkle';
+    sparkle.style.left = (10 + Math.random() * 80) + '%';
+    sparkle.style.top = (10 + Math.random() * 80) + '%';
+    sparkle.style.animationDelay = (Math.random() * 0.3) + 's';
+    container.appendChild(sparkle);
+
+    // clean up after the animation completes so the DOM doesn't grow forever
+    sparkle.addEventListener('animationend', () => sparkle.remove());
+  }
+
+  function runSparkleBurst(durationMs) {
+    if (reducedMotion) return;
+    const interval = setInterval(() => {
+      spawnSparkle(sparkleLeft);
+      spawnSparkle(sparkleRight);
+    }, 140);
+
+    setTimeout(() => clearInterval(interval), durationMs);
+  }
+
+  /* ==========================================================
+     4. STAGGERED MESSAGE REVEAL
+     ========================================================== */
+  function revealMessage() {
+    messageLines.forEach((line, index) => {
+      line.style.transitionDelay = (index * 0.18) + 's';
+    });
+    book.classList.add('is-revealed');
+  }
+
+  /* ==========================================================
+     5. BOOK OPEN SEQUENCE (with re-entrancy guard)
+     ========================================================== */
+  function openBook() {
+    if (isAnimating || hasOpened) return; // prevent replay while running / after done
+    isAnimating = true;
+    hasOpened = true;
+
+    book.classList.add('is-open');
+    if (hint) hint.classList.add('is-hidden');
+
+    // Wait for the cover's rotation transition to finish before
+    // starting the "magical glow" delay + message reveal.
+    const onCoverTransitionEnd = (event) => {
+      if (event.target !== frontCover || event.propertyName !== 'transform') return;
+      frontCover.removeEventListener('transitionend', onCoverTransitionEnd);
+
+      runSparkleBurst(1100);
+
+      // ~1 second pause with sparkles before the birthday message appears
+      setTimeout(() => {
+        revealMessage();
+        isAnimating = false;
+      }, 1000);
+    };
+
+    frontCover.addEventListener('transitionend', onCoverTransitionEnd);
+
+    // Fallback in case transitionend doesn't fire (e.g. reduced motion)
+    if (reducedMotion) {
+      setTimeout(() => {
+        revealMessage();
+        isAnimating = false;
+      }, 50);
+    }
+  }
+
+  /* ==========================================================
+     6. EVENT WIRING — click, touch, keyboard
+     ========================================================== */
+  function initInteractions() {
+    book.addEventListener('click', openBook);
+
+    book.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openBook();
+      }
+    });
+
+    // touch devices already receive 'click' via tap, but this keeps
+    // the tap responsive and avoids any ghost-click delay
+    book.addEventListener(
+      'touchend',
+      (e) => {
+        e.preventDefault();
+        openBook();
+      },
+      { passive: false }
+    );
+  }
+
+  /* ==========================================================
+     INIT
+     ========================================================== */
+  function init() {
+    initPetals(16);
+    initBokeh(14);
+    initInteractions();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
